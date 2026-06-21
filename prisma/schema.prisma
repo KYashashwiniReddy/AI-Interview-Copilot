@@ -1,0 +1,351 @@
+datasource db {
+  provider = "postgresql" // Changed from sqlite to postgresql
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  passwordHash       String?             // Nullable if using Supabase Auth directly
+  role               String              @default("STUDENT") // STUDENT, ADMIN
+  status             String              @default("ACTIVE")  // ACTIVE, SUSPENDED
+  theme              String              @default("DARK")    // DARK, LIGHT
+  lastLogin          DateTime?
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  profile            Profile?
+  jobProfiles        JobProfile[]
+  atsReports         ATSReport[]
+  skillGapReports    SkillGapReport[]
+  roadmaps           Roadmap[]
+  interviewSessions  InterviewSession[]
+  interviewAnswers   InterviewAnswer[]
+  adminLogs          AdminLog[]          @relation("AdminLogs")
+  targetLogs         AdminLog[]          @relation("TargetUserLogs")
+  activityLogs       ActivityLog[]
+  notifications      Notification[]
+  createdQuestions   QuestionBank[]      @relation("QuestionCreator")
+  resumeUploads      ResumeUpload[]
+}
+
+model Profile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName        String
+  avatarUrl       String?
+  experienceLevel String?
+  currentRole     String?
+  skills          String?  // JSON string of skill array
+  updatedAt       DateTime @updatedAt
+}
+
+model JobProfile {
+  id                   String             @id @default(uuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobTitle             String
+  jobDescription       String
+  extractedSkills      String             // JSON string list
+  missingSkills        String             // JSON string list
+  matchingSkills       String             // JSON string list
+  experienceLevel      String
+  domainClassification String
+  atsKeywords          String             // JSON string list
+  targetRoleProfile    String
+  createdAt            DateTime           @default(now())
+  atsReports           ATSReport[]
+  skillGapReports      SkillGapReport[]
+  roadmaps             Roadmap[]
+  interviewSessions    InterviewSession[]
+}
+
+model ATSReport {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobProfileId    String?
+  jobProfile      JobProfile? @relation(fields: [jobProfileId], references: [id], onDelete: Cascade)
+  jobTitle        String
+  jobDescription  String
+  overallScore    Int
+  categoryScores  String      // JSON string: { keywords, skills, experience, education, formatting }
+  strengths       String      // JSON string list
+  weaknesses      String      // JSON string list
+  missingKeywords String      // JSON string list
+  recommendations String      // JSON string list
+  resumeUrl       String?
+  resumeText      String?     @db.Text
+  createdAt       DateTime    @default(now())
+  optimizedResume OptimizedResume?
+}
+
+model SkillGapReport {
+  id               String      @id @default(uuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobProfileId     String?
+  jobProfile       JobProfile? @relation(fields: [jobProfileId], references: [id], onDelete: Cascade)
+  jobTitle         String
+  matchingSkills   String      // JSON string list
+  missingSkills    String      // JSON string list
+  recommendedSkills String     // JSON string list
+  createdAt        DateTime    @default(now())
+}
+
+model OptimizedResume {
+  id            String    @id @default(uuid())
+  reportId      String    @unique
+  report        ATSReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId        String
+  optimizedText String    @db.Text
+  missingSkills String    // JSON string list
+  addedKeywords String    // JSON string list
+  originalScore Int
+  optimizedScore Int
+  improvement   Int
+  mode          String    @default("MODIFY_EXISTING")
+  createdAt     DateTime  @default(now())
+}
+
+model Roadmap {
+  id                 String      @id @default(uuid())
+  userId             String
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobProfileId       String?
+  jobProfile         JobProfile? @relation(fields: [jobProfileId], references: [id], onDelete: Cascade)
+  title              String
+  durationDays       Int         // 30, 60, or 90
+  structure          String      // JSON string of roadmap weeks/days
+  createdAt          DateTime    @default(now())
+  current_week       Int?        @default(1)
+  is_active          Boolean?    @default(true)
+  progress_percentage Float?     @default(0.0)
+  started_at         DateTime?   @default(now())
+  status             String?     @default("ACTIVE")
+
+  // Progress persistence
+  completedTasks     String?     @default("[]") // JSON string of task keys
+  completedWeeks     String?     @default("[]") // JSON string of completed week numbers
+  certificationsEarned String?   @default("[]") // JSON string list of cert names
+  courseProgress     String?     @default("{}") // JSON string mapping course names to progress status
+  timeSpentLearning  Int?        @default(0)    // Hours spent
+  completedAt        DateTime?
+  finalAssessment    String?     @db.Text
+  completionRecommendations String? @db.Text       // JSON string list
+  projectSubmissions String?     @db.Text @default("{}")
+}
+
+model InterviewSession {
+  id                 String              @id @default(uuid())
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobProfileId       String?
+  jobProfile         JobProfile?         @relation(fields: [jobProfileId], references: [id], onDelete: Cascade)
+  type               String              // TECHNICAL, HR, BEHAVIORAL, SYSTEM_DESIGN, MIXED
+  role               String
+  company            String
+  difficulty         String              // EASY, MEDIUM, HARD
+  experienceLevel    String
+  questionCount      Int
+  status             String              @default("STARTED") // STARTED, COMPLETED
+  overallScore       Int?
+  communicationScore Int?
+  technicalScore     Int?
+  confidenceScore    Int?
+  grammarScore       Int?
+  feedback           String?
+  createdAt          DateTime            @default(now())
+  endedAt            DateTime?
+  questions          InterviewQuestion[]
+
+  // Behavioral metrics
+  behavioralScore         Int?        @default(0)
+  professionalismScore    Int?        @default(0)
+  leadershipPresenceScore Int?        @default(0)
+  behavioralStrengths     String?     @db.Text
+  behavioralImprovements   String?     @db.Text
+}
+
+model InterviewQuestion {
+  id                String            @id @default(uuid())
+  sessionId         String
+  session           InterviewSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  text              String
+  orderIndex        Int
+  isFollowUp        Boolean           @default(false)
+  expectedAnswer    String?           @db.Text
+  expectedConcepts  String?           @db.Text
+  keySkills         String?           @db.Text
+  importantKeywords String?           @db.Text
+  evaluationRubric  String?           @db.Text
+  answer            InterviewAnswer?
+}
+
+model InterviewAnswer {
+  id                 String            @id @default(uuid())
+  questionId         String            @unique
+  question           InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answerText         String
+  voiceRecordingUrl  String?
+  score              Int
+  correctnessScore   Int
+  communicationScore Int
+  confidenceScore    Int
+  grammarScore       Int
+  expectedAnswer     String
+  improvementTips    String
+  missingConcepts    String?           // JSON string list
+  conceptCoverage    Int?              // percentage (0-100)
+  createdAt          DateTime          @default(now())
+  voiceRecording     VoiceRecording?
+
+  // Video Behavioral metrics
+  videoRecordingUrl       String?
+  behavioralScore         Int?        @default(0)
+  eyeContactScore         Int?        @default(0)
+  bodyLanguageScore       Int?        @default(0)
+  voiceQualityScore       Int?        @default(0)
+  professionalismScore    Int?        @default(0)
+  behavioralDetails       String?     @db.Text
+}
+
+model VoiceRecording {
+  id              String          @id @default(uuid())
+  answerId        String          @unique
+  answer          InterviewAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  storagePath     String
+  durationSeconds Float
+  createdAt       DateTime        @default(now())
+}
+
+model QuestionBank {
+  id                 String   @id @default(uuid())
+  questionText       String
+  category           String   // TECHNICAL, HR, BEHAVIORAL, SYSTEM_DESIGN, CODING, PROBLEM_SOLVING, DOMAIN_SPECIFIC
+  questionType       String?  // e.g. Conceptual, Coding/Practical, Scenario-based
+  role               String
+  difficulty         String   // EASY, MEDIUM, HARD
+  expectedAnswer     String
+  keyConcepts        String?  // JSON string array
+  experienceLevel    String?  // Fresher, 0-1 Years, 1-3 Years, 3-5 Years, 5+ Years, Senior
+  tags               String?  // JSON string array
+  company            String?
+  hints              String?
+  evaluationCriteria String?
+  followUpQuestions  String?  @db.Text
+  status             String   @default("ACTIVE") // ACTIVE, ARCHIVED
+  createdById        String?
+  createdBy          User?    @relation("QuestionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model AdminLog {
+  id           String   @id @default(uuid())
+  adminId      String
+  admin        User     @relation("AdminLogs", fields: [adminId], references: [id], onDelete: Cascade)
+  action       String
+  targetUserId String?
+  targetUser   User?    @relation("TargetUserLogs", fields: [targetUserId], references: [id], onDelete: SetNull)
+  details      String
+  createdAt    DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  details   String
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  type      String   // INFO, WARNING, SUCCESS, ERROR
+  createdAt DateTime @default(now())
+}
+
+model ResumeUpload {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeUrl String
+  fileName  String
+  createdAt DateTime @default(now())
+}
+
+model AdminSetting {
+  id                      String   @id @default(uuid())
+  atsScoreWeight          Float    @default(0.15)
+  skillMatchWeight        Float    @default(0.20)
+  projectWeight           Float    @default(0.15)
+  experienceWeight        Float    @default(0.15)
+  educationWeight         Float    @default(0.10)
+  certificationWeight     Float    @default(0.10)
+  keywordWeight           Float    @default(0.15)
+  technicalScoreWeight    Float    @default(0.30)
+  communicationWeight     Float    @default(0.20)
+  confidenceWeight        Float    @default(0.15)
+  problemSolvingWeight    Float    @default(0.20)
+  domainKnowledgeWeight   Float    @default(0.15)
+  platformName            String   @default("NovaHire AI")
+  emailTemplateRegister   String?
+  emailTemplateReset      String?
+  smtpHost                String?
+  smtpPort                Int?
+  smtpUser                String?
+  smtpPass                String?
+  brandingLogoUrl         String?
+  updatedAt               DateTime @updatedAt
+}
+
+model AiRequestLog {
+  id             String   @id @default(uuid())
+  requestType    String   // 'ATS', 'INTERVIEW', 'ROADMAP', 'QUESTION_GEN'
+  responseTimeMs Int
+  status         String   // 'SUCCESS', 'FAILED'
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+}
+
+model InterviewTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  role            String
+  difficulty      String
+  experienceLevel String
+  questionCount   Int
+  createdAt       DateTime @default(now())
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+}
+
+model QuestionCategory {
+  id   String @id @default(uuid())
+  name String @unique
+}
+
+model QuestionTag {
+  id   String @id @default(uuid())
+  name String @unique
+}
+
